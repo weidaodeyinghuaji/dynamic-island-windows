@@ -1,0 +1,20 @@
+window_position:
+  x: 797
+  y: 14
+window_locked: false
+shortcut_presets:
+- {}
+- {}
+- {}
+plugins_visibility: {}
+motion:
+  hover_expand_delay_ms: 0
+  min_dwell_ms: 0
+  expand_duration_ms: 220
+  collapse_duration_ms: 180
+  expand_easing: cubic-bezier(0.4, 0, 0.2, 1)
+  collapse_easing: cubic-bezier(0.4, 0, 0.2, 1)
+performance_thresholds:
+  cpu: 85
+  memory: 90
+  gpu_temp: 85

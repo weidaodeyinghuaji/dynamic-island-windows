@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>灵动岛中心扩散原型</title>
+  <style>
+    :root {
+      --bg: #0a0c10;
+      --island: rgba(18, 19, 24, 0.92);
+      --island-border: rgba(255, 255, 255, 0.16);
+      --text: #eef1f6;
+      --muted: #9aa4b5;
+      --collapsed-w: 180px;
+      --expanded-w: 780px;
+      --h: 58px;
+      --radius: 999px;
+      --dur: 460ms;
+      --ease: cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      font-family: "Microsoft YaHei UI", "PingFang SC", "Noto Sans SC", sans-serif;
+      background:
+        radial-gradient(1200px 420px at 50% -180px, #1a2030 0%, rgba(26, 32, 48, 0) 70%),
+        radial-gradient(900px 360px at 78% 14%, rgba(49, 93, 210, 0.16) 0%, rgba(49, 93, 210, 0) 62%),
+        radial-gradient(900px 360px at 22% 14%, rgba(174, 67, 225, 0.12) 0%, rgba(174, 67, 225, 0) 62%),
+        var(--bg);
+      color: var(--text);
+    }
+
+    .stage {
+      position: fixed;
+      inset: 0;
+      display: grid;
+      place-items: start center;
+      pointer-events: none;
+    }
+
+    .island-wrap {
+      position: relative;
+      margin-top: 18px;
+      width: var(--expanded-w);
+      height: 74px;
+      display: grid;
+      place-items: center;
+      pointer-events: auto;
+    }
+
+    .island {
+      position: relative;
+      width: var(--collapsed-w);
+      height: var(--h);
+      border-radius: var(--radius);
+      border: 1px solid var(--island-border);
+      background: linear-gradient(180deg, rgba(33, 35, 43, 0.92) 0%, var(--island) 72%);
+      backdrop-filter: blur(18px) saturate(120%);
+      box-shadow:
+        0 12px 30px rgba(0, 0, 0, 0.45),
+        inset 0 1px 0 rgba(255, 255, 255, 0.06);
+      transition: width var(--dur) var(--ease), box-shadow var(--dur) var(--ease), transform 300ms var(--ease);
+      overflow: hidden;
+      isolation: isolate;
+      transform: translateZ(0);
+    }
+
+    .island::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      background:
+        linear-gradient(112deg, rgba(255, 255, 255, 0) 34%, rgba(255, 255, 255, 0.2) 49%, rgba(255, 255, 255, 0) 64%);
+      transform: translateX(-130%);
+      opacity: 0;
+      transition: transform 700ms var(--ease), opacity 320ms ease;
+      pointer-events: none;
+    }
+
+    .island.expanded {
+      width: var(--expanded-w);
+      box-shadow:
+        0 18px 45px rgba(0, 0, 0, 0.52),
+        0 0 40px rgba(72, 122, 255, 0.16),
+        inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    }
+
+    .island.expanded::before {
+      transform: translateX(130%);
+      opacity: 1;
+    }
+
+    .center-core {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 5;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 16px;
+      border-radius: 999px;
+      background: rgba(10, 12, 16, 0.44);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .dot {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.5), inset 0 1px 1px rgba(255, 255, 255, 0.35);
+      transform: translateZ(0);
+    }
+
+    .dot.red { background: #ff5f57; }
+    .dot.yellow { background: #febc2e; }
+    .dot.green { background: #28c840; }
+
+    .wing {
+      position: absolute;
+      top: 50%;
+      width: calc((var(--expanded-w) - 170px) / 2);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      opacity: 0;
+      filter: blur(3px);
+      transform: translateY(-50%);
+      transition:
+        opacity 280ms ease,
+        filter 320ms ease,
+        transform var(--dur) var(--ease);
+      pointer-events: none;
+      white-space: nowrap;
+    }
+
+    .wing.left {
+      left: 16px;
+      justify-content: flex-start;
+      transform: translate(-36px, -50%);
+    }
+
+    .wing.right {
+      right: 16px;
+      justify-content: flex-end;
+      transform: translate(36px, -50%);
+    }
+
+    .island.expanded .wing {
+      opacity: 1;
+      filter: blur(0);
+      pointer-events: auto;
+    }
+
+    .island.expanded .wing.left {
+      transform: translate(0, -50%);
+      transition-delay: 80ms;
+    }
+
+    .island.expanded .wing.right {
+      transform: translate(0, -50%);
+      transition-delay: 110ms;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      font-size: 14px;
+      line-height: 1;
+      letter-spacing: 0.2px;
+      color: var(--text);
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .badge {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #6ea8fe;
+      box-shadow: 0 0 10px rgba(110, 168, 254, 0.75);
+    }
+
+    .hint {
+      position: fixed;
+      top: 96px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 13px;
+      color: var(--muted);
+      letter-spacing: 0.3px;
+      user-select: none;
+    }
+
+    @media (max-width: 860px) {
+      :root {
+        --expanded-w: min(96vw, 720px);
+      }
+      .chip {
+        font-size: 13px;
+        padding: 8px 10px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="stage">
+    <div class="island-wrap" id="wrap">
+      <div class="island" id="island">
+        <div class="wing left">
+          <div class="chip"><span class="badge"></span>音乐控制</div>
+          <div class="chip">截图</div>
+          <div class="chip">录屏</div>
+        </div>
+
+        <div class="center-core">
+          <span class="dot red"></span>
+          <span class="dot yellow"></span>
+          <span class="dot green"></span>
+        </div>
+
+        <div class="wing right">
+          <div class="chip">天气 23°C</div>
+          <div class="chip">文件夹</div>
+          <div class="chip">锁屏</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="hint">悬停灵动岛可展开，移出会平滑收起（中心始终为三圆点）</div>
+
+  <script>
+    const island = document.getElementById("island");
+    const wrap = document.getElementById("wrap");
+    let collapseTimer = null;
+
+    const expand = () => {
+      if (collapseTimer) {
+        clearTimeout(collapseTimer);
+        collapseTimer = null;
+      }
+      island.classList.add("expanded");
+    };
+
+    const collapse = () => {
+      collapseTimer = window.setTimeout(() => {
+        island.classList.remove("expanded");
+      }, 120);
+    };
+
+    wrap.addEventListener("mouseenter", expand);
+    wrap.addEventListener("mouseleave", collapse);
+
+    window.addEventListener("load", () => {
+      window.setTimeout(expand, 260);
+    });
+  </script>
+</body>
+</html>

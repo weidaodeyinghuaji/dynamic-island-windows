@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dynamic Island Demo</title>
+  <style>
+    body { margin:0; min-height:100vh; display:grid; place-items:center; background:linear-gradient(135deg,#0b0d13,#1a2130); font-family:Segoe UI,sans-serif; color:#fff; }
+    .frame { width:min(900px,92vw); text-align:center; }
+    .island { margin:24px auto; height:40px; width:136px; border-radius:999px; background:rgba(15,15,18,.92); display:flex; align-items:center; justify-content:flex-end; padding:0 18px; gap:8px; transition:width 320ms cubic-bezier(0.4,0,0.2,1), transform 320ms cubic-bezier(0.4,0,0.2,1); overflow:hidden; }
+    .island.expand { width:460px; }
+    .dot { width:16px; height:16px; border-radius:50%; }
+    .r { background:#ff5f57; } .y { background:#febc2e; } .g { background:#28c840; }
+    .content { margin-right:auto; opacity:0; transform:translateY(3px); transition:opacity 100ms cubic-bezier(0.4,0,0.2,1) 90ms, transform 100ms cubic-bezier(0.4,0,0.2,1) 90ms; white-space:nowrap; font-size:14px; }
+    .expand .content { opacity:1; transform:translateY(0); }
+    .tip { opacity:.85; font-size:14px; }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <h2>灵动岛交互演示</h2>
+    <div id="island" class="island">
+      <div class="content">🎵 对称展开 + 延迟渐显（90ms）</div>
+      <div class="dot r"></div><div class="dot y"></div><div class="dot g"></div>
+    </div>
+    <p class="tip">鼠标移入停留 300ms 后触发展开，移出按最小停留阈值回收</p>
+  </div>
+  <script>
+    const island = document.getElementById('island');
+    let hoverTimer = null;
+    let expandedAt = 0;
+    const hoverDelay = 300;
+    const minDwell = 280;
+    island.addEventListener('mouseenter', () => {
+      clearTimeout(hoverTimer);
+      hoverTimer = setTimeout(() => {
+        island.classList.add('expand');
+        expandedAt = performance.now();
+      }, hoverDelay);
+    });
+    island.addEventListener('mouseleave', () => {
+      clearTimeout(hoverTimer);
+      const elapsed = performance.now() - expandedAt;
+      const remain = Math.max(0, minDwell - elapsed);
+      setTimeout(() => island.classList.remove('expand'), remain);
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,28 @@
+{
+  "coverage": 96.24,
+  "covered_lines": 410,
+  "executable_lines": 426,
+  "details": {
+    "src/core/event_bus.py": {
+      "covered": 11,
+      "total": 11
+    },
+    "src/plugins/manager.py": {
+      "covered": 28,
+      "total": 30
+    },
+    "src/ui/island_window.py": {
+      "covered": 285,
+      "total": 287
+    },
+    "src/ui/shortcut_dots.py": {
+      "covered": 54,
+      "total": 66
+    },
+    "src/utils/config.py": {
+      "covered": 32,
+      "total": 32
+    }
+  },
+  "pytest_exit": 0
+}
