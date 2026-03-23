@@ -144,7 +144,9 @@ class DynamicIslandWindow(QWidget):
             widget = item.widget()
             if widget:
                 # 即使隐藏也尝试获取其建议宽度
-                widget.layout().activate() # 强制布局更新
+                layout = widget.layout()
+                if layout is not None:
+                    layout.activate()  # 强制布局更新
                 hint = widget.sizeHint().width()
                 if hint > 0:
                     left_req += hint + self.left_layout.spacing()
@@ -154,7 +156,9 @@ class DynamicIslandWindow(QWidget):
             item = self.right_layout.itemAt(i)
             widget = item.widget()
             if widget:
-                widget.layout().activate()
+                layout = widget.layout()
+                if layout is not None:
+                    layout.activate()
                 hint = widget.sizeHint().width()
                 if hint > 0:
                     right_req += hint + self.right_layout.spacing()
