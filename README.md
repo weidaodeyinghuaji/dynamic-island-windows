@@ -1,62 +1,78 @@
-# Dynamic-Island-Latest
+# 灵动岛（Dynamic Island for Windows）
 
-一个基于 PySide6 的 Windows 桌面灵动岛项目，支持插件化模块（天气、音乐、系统状态、剪贴板、音乐控制等），并提供一键打包能力。
+一个基于 PySide6 的 Windows 桌面工具，将“灵动岛”交互体验引入桌面端。项目采用插件化架构，支持媒体控制、天气、电池、剪贴板历史、系统监控与生产力快捷工具等功能。
 
 ## 功能特性
 
-- 悬浮灵动岛窗口，支持展开/收起动画与拖拽定位
-- 插件化架构，模块可独立启用/隐藏
-- 音乐控制与媒体信息显示（支持系统媒体会话）
-- 快捷圆点自定义（快捷键/网址/脚本/程序）
-- 托盘菜单与主题切换
+- 灵动岛主窗口：悬停展开、收起动画、托盘菜单、窗口锁定与主题感知
+- 插件化扩展：通过插件管理器动态加载功能模块
+- 媒体控制：播放/暂停、上下曲、音量与封面信息展示
+- 系统信息：CPU/内存监控、网络状态、电池健康与充电状态提示
+- 生产力工具：区域截屏、录屏指示、剪贴板历史快捷唤出
+- 快捷交互：支持全局快捷键和三色快捷点自定义动作
 
-## 环境要求
+## 技术栈
 
-- Windows 10/11
-- Python 3.11+
+- Python 3.10+
+- PySide6（GUI）
+- psutil（系统信息）
+- PyYAML（配置）
+- pytest（测试）
+- PyInstaller（打包）
 
-## 快速开始
+## 目录结构
 
-```bash
-python -m venv .venv
-.venv\Scripts\pip install -r requirements.txt
-.venv\Scripts\python src\main.py
+```text
+灵动岛/
+├─ src/                    # 应用主代码
+│  ├─ core/                # 核心事件机制
+│  ├─ ui/                  # 主界面与交互组件
+│  ├─ plugins/             # 插件基类与管理器
+│  └─ utils/               # 配置、日志、主题工具
+├─ plugins/                # 具体插件实现
+├─ tests/                  # 单元测试与质量脚本
+├─ docs/                   # PRD、架构与报告文档
+├─ demo/                   # HTML 原型示例
+├─ build.py                # 打包脚本
+└─ requirements.txt        # 依赖清单
 ```
 
-## 打包发布
+## 安装与运行
 
-```bash
-.venv\Scripts\python build.py
+```powershell
+cd d:\demo\灵动岛
+py -3 -m venv .venv
+.\.venv\Scripts\activate
+pip install -r requirements.txt
+py -3 src\main.py
 ```
 
-打包产物默认在 `dist/` 目录下。
+## 测试
 
-## 项目结构
+```powershell
+cd d:\demo\灵动岛
+pytest -q
+py -3 tests\coverage_runner.py
+py -3 tests\benchmark_profile.py
+```
 
-- `src/` 主程序源码
-- `plugins/` 插件实现与媒体信息脚本
-- `tests/` 测试用例
-- `assets/` 静态资源
-- `docs/` 需求、架构与性能文档
+## 打包
 
-## 安装与使用
+```powershell
+cd d:\demo\灵动岛
+py -3 build.py
+```
 
-1. 运行程序后，灵动岛会固定在桌面顶部。
-2. 鼠标移入可展开模块，移出自动收起。
-3. 托盘菜单可切换主题、锁定窗口、管理模块显示。
-4. 音乐播放时会尝试读取系统媒体会话并展示歌曲信息。
+## 配置说明
 
-## 版本与发布
+- 应用首次运行会自动生成 `config.yaml`
+- 主要配置项包括窗口位置、动画参数、插件显示状态和性能阈值
 
-- 采用语义化版本（SemVer）
-- 更新历史见 `CHANGELOG.md`
-- 建议通过 GitHub Releases 分发可执行文件
+## 平台说明
 
-## 截图与演示
-
-- 可在仓库 `assets/` 或 Releases 中查看最新演示素材
-- 建议添加 `assets/screenshot-main.png` 作为首页展示图
+- 当前主要面向 Windows 环境
+- 部分功能依赖系统能力（如 PowerShell、媒体会话、系统热键）
 
 ## 许可证
 
-本项目采用 MIT License，详见 `LICENSE`。
+本项目采用 MIT License，详见 [LICENSE](./LICENSE)。

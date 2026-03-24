@@ -1,6 +1,10 @@
 .venv/
+.env
+.env.*
+!.env.example
 build/
 dist/
+*.spec
 .pytest_cache/
 __pycache__/
 *.pyc
@@ -11,3 +15,6 @@ logs/
 .trae/
 .DS_Store
 Thumbs.db
+config.yaml
+.idea/
+.vscode/
