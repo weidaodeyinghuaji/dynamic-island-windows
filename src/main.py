@@ -4,8 +4,6 @@ import sys
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 
-from src.ui.island_window import DynamicIslandWindow
-
 
 def main() -> int:
     if sys.stdin is None:
@@ -16,6 +14,7 @@ def main() -> int:
         sys.stderr = open(os.devnull, "w")
     QApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
     app = QApplication(sys.argv)
+    from src.ui.island_window import DynamicIslandWindow
     window = DynamicIslandWindow()
     window.show()
     return app.exec()

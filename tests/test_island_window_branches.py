@@ -301,6 +301,10 @@ def test_uncovered_branches(monkeypatch, qapp):
             "plugins_visibility": {},
         }.get(key, default),
     )
+    monkeypatch.setattr(
+        "src.ui.island_window.QInputDialog.getItem",
+        lambda *args, **kwargs: ("清空配置", True),
+    )
     window = DynamicIslandWindow()
     window._on_dot_edit_requested(1)
     assert window._state == "Edit-1"

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import re
 import time
 from dataclasses import dataclass
@@ -17,7 +18,7 @@ from PySide6.QtCore import (
     Signal,
     Property,
 )
-from PySide6.QtGui import QAction, QCloseEvent, QColor, QCursor, QKeySequence, QLinearGradient, QMouseEvent, QPainter, QPainterPath, QShortcut
+from PySide6.QtGui import QAction, QCloseEvent, QColor, QCursor, QKeySequence, QLinearGradient, QMouseEvent, QPainter, QPainterPath, QPen, QRadialGradient, QShortcut, QWheelEvent
 from PySide6.QtWidgets import QApplication, QGraphicsOpacityEffect, QHBoxLayout, QInputDialog, QMenu, QSystemTrayIcon, QWidget
 
 from src.plugins.manager import plugin_manager
@@ -74,6 +75,15 @@ class DynamicIslandWindow(QWidget):
         self._anim_target_x = 0
         self._use_target_x_lerp = False
         self._keep_anchor_during_anim = False
+        self._timer_enabled = False
+        self._timer_mode = "off"  # off | countup | countdown
+        self._timer_started_at = 0.0
+        self._timer_paused = False
+        self._timer_pause_acc = 0.0
+        self._timer_countdown_total = 0.0
+        self._timer_last_text = ""
+        self._accent_phase = 0.0
+        self._pulse_started_at = 0.0
         self._build_ui()
         self._apply_plugin_visibility()
         self._init_position()
@@ -185,7 +195,11 @@ class DynamicIslandWindow(QWidget):
             self.resize(self.EXPAND_WIDTH, self.height())
 
     def _position_shortcut_dots(self) -> None:
+        if hasattr(self, "shortcut_dots") and hasattr(self.shortcut_dots, "set_compact_mode"):
+            self.shortcut_dots.set_compact_mode(not self._is_expanded)
         x = int(round((self.width() - self.shortcut_dots.width()) / 2.0))
+        if not self._is_expanded:
+            x = int(self.width() - self.MARGIN_X - self.shortcut_dots.width())
         y = int(round((self.height() - self.shortcut_dots.height()) / 2.0))
         self.shortcut_dots.move(x, y)
 
@@ -209,6 +223,13 @@ class DynamicIslandWindow(QWidget):
         self.content_anim = QPropertyAnimation(self, b"content_opacity")
         self.content_anim.setDuration(180)
         self.content_anim.setEasingCurve(QEasingCurve.Type.InOutCubic)
+        self.accent_anim = QPropertyAnimation(self, b"accent_phase")
+        self.accent_anim.setStartValue(0.0)
+        self.accent_anim.setEndValue(1.0)
+        self.accent_anim.setDuration(5200)
+        self.accent_anim.setLoopCount(-1)
+        self.accent_anim.setEasingCurve(QEasingCurve.Type.InOutSine)
+        self.accent_anim.start()
 
     def _init_tray(self) -> None:
         self.tray_icon = QSystemTrayIcon(self)
@@ -224,10 +245,13 @@ class DynamicIslandWindow(QWidget):
         self.shortcut_menu.addAction("配置红点", lambda: self._on_dot_edit_requested(0))
         self.shortcut_menu.addAction("配置黄点", lambda: self._on_dot_edit_requested(1))
         self.shortcut_menu.addAction("配置绿点", lambda: self._on_dot_edit_requested(2))
+        self.timer_menu = QMenu("计时器", self.tray_menu)
+        self._populate_timer_menu(self.timer_menu)
         self.plugins_menu = QMenu("显示模块", self.tray_menu)
         self._populate_plugins_menu(self.plugins_menu)
         self.tray_menu.addAction(theme_action)
         self.tray_menu.addAction(self.lock_action)
+        self.tray_menu.addMenu(self.timer_menu)
         self.tray_menu.addMenu(self.plugins_menu)
         self.tray_menu.addMenu(self.shortcut_menu)
         self.tray_menu.addSeparator()
@@ -248,6 +272,10 @@ class DynamicIslandWindow(QWidget):
         self.fade_timer.setSingleShot(True)
         self.fade_timer.setInterval(24)
         self.fade_timer.timeout.connect(self._start_content_fade)
+        self.timer_tick = QTimer(self)
+        self.timer_tick.setTimerType(Qt.TimerType.PreciseTimer)
+        self.timer_tick.setInterval(100)
+        self.timer_tick.timeout.connect(self._on_timer_tick)
 
     def _load_motion_profile(self) -> MotionProfile:
         motion = config_manager.get("motion", {}) or {}
@@ -535,6 +563,7 @@ class DynamicIslandWindow(QWidget):
         self._is_expanded = True
         self._expanded_since = time.monotonic()
         self.set_state("Expanded")
+        self._trigger_pulse()
         self.set_content_opacity(0.0)
         self._activate_plugins()
         self._recalculate_expand_width() # 重新计算展开宽度，因为插件可能刚刚变为可见
@@ -618,13 +647,33 @@ class DynamicIslandWindow(QWidget):
     def contextMenuEvent(self, event):
         menu = QMenu(self)
         self._apply_menu_theme(menu)
+        quick_timer_action = None
+        quick_timer_stop = None
+        if self._timer_enabled and self._timer_mode != "off":
+            quick_timer_action = menu.addAction("继续计时" if self._timer_paused else "暂停计时")
+            quick_timer_stop = menu.addAction("停止计时")
+            if hasattr(menu, "addSeparator"):
+                menu.addSeparator()
+        else:
+            quick_timer_action = menu.addAction("开始 25 分钟倒计时")
+            if hasattr(menu, "addSeparator"):
+                menu.addSeparator()
         if hasattr(menu, "addMenu"):
             plugins_menu = menu.addMenu("显示模块")
             self._populate_plugins_menu(plugins_menu)
+            timer_menu = menu.addMenu("计时器")
+            self._populate_timer_menu(timer_menu)
         toggle = menu.addAction("切换主题")
         lock_action = menu.addAction("解锁位置" if self._is_locked else "锁定位置")
         quit_action = menu.addAction("退出灵动岛")
         action = menu.exec(event.globalPos())
+        if action == quick_timer_action:
+            if self._timer_enabled and self._timer_mode != "off":
+                self._toggle_pause_timer()
+            else:
+                self._start_count_down(25 * 60)
+        if action == quick_timer_stop:
+            self._stop_timer()
         if action == toggle:
             self._toggle_theme()
         if action == lock_action:
@@ -633,6 +682,13 @@ class DynamicIslandWindow(QWidget):
             QApplication.quit()
 
     def mousePressEvent(self, event: QMouseEvent):
+        if event.button() == Qt.MouseButton.LeftButton and self._timer_badge_rect().contains(event.position().toPoint()):
+            if self._timer_enabled and self._timer_mode != "off":
+                self._toggle_pause_timer()
+            else:
+                self._start_count_down(25 * 60)
+            event.accept()
+            return
         if event.button() == Qt.MouseButton.LeftButton and not self._is_locked:
             self.geometry_anim.stop()
             self.shimmer_anim.stop()
@@ -640,6 +696,21 @@ class DynamicIslandWindow(QWidget):
             self._drag_start_global = event.globalPosition().toPoint()
             self._is_dragging = False
         super().mousePressEvent(event)
+
+    def wheelEvent(self, event: QWheelEvent) -> None:
+        if not self._is_expanded and self._timer_badge_rect().contains(event.position().toPoint()):
+            delta = event.angleDelta().y()
+            if delta == 0:
+                super().wheelEvent(event)
+                return
+            steps = int(delta / 120)
+            minutes_delta = steps
+            if self._timer_mode != "countdown" or not self._timer_enabled:
+                self._start_count_down(25 * 60)
+            self._adjust_countdown_minutes(minutes_delta)
+            event.accept()
+            return
+        super().wheelEvent(event)
 
     def mouseMoveEvent(self, event: QMouseEvent):
         if self._drag_pos is not None and event.buttons() & Qt.MouseButton.LeftButton:
@@ -717,9 +788,201 @@ class DynamicIslandWindow(QWidget):
         radius = min(self.width(), self.height()) / 2.0
         path.addRoundedRect(0, 0, self.width(), self.height(), radius, radius)
         painter.fillPath(path, self._bg_color)
+        if self._is_expanded or (self._timer_enabled and self._timer_mode != "off") or self._state == "Recording":
+            phase = float(self._accent_phase)
+            hue = int((phase * 360.0) % 360.0)
+            if self._state == "Recording":
+                hue = 0
+            elif self._timer_enabled and self._timer_mode != "off":
+                hue = 140
+            c1 = QColor.fromHsv(hue, 210, 255)
+            c2 = QColor.fromHsv((hue + 60) % 360, 210, 255)
+            c3 = QColor.fromHsv((hue + 130) % 360, 210, 255)
+            overlay = QLinearGradient(0, 0, self.width(), 0)
+            shift = phase
+            overlay.setColorAt(0.0, QColor(c1.red(), c1.green(), c1.blue(), 0))
+            overlay.setColorAt(min(1.0, max(0.0, shift)), QColor(c2.red(), c2.green(), c2.blue(), 70 if self._is_expanded else 54))
+            overlay.setColorAt(1.0, QColor(c3.red(), c3.green(), c3.blue(), 0))
+            painter.fillPath(path, overlay)
+            glow = (0.35 if self._is_expanded else 0.24) + 0.10 * (0.5 + 0.5 * math.sin(phase * math.tau))
+            glow_alpha = int(round(255 * glow))
+            glow_color = QColor(c2.red(), c2.green(), c2.blue(), min(140, glow_alpha))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.setPen(QPen(glow_color, 2))
+            painter.drawPath(path)
+            if self._pulse_started_at > 0.0:
+                t = time.monotonic() - float(self._pulse_started_at)
+                if 0.0 <= t <= 0.55:
+                    k = 1.0 - (t / 0.55)
+                    pr = float(min(self.width(), self.height())) * (0.45 + 0.85 * (t / 0.55))
+                    pulse = QRadialGradient(self.width() / 2.0, self.height() / 2.0, pr)
+                    pulse.setColorAt(0.0, QColor(c2.red(), c2.green(), c2.blue(), int(round(120 * k))))
+                    pulse.setColorAt(1.0, QColor(c2.red(), c2.green(), c2.blue(), 0))
+                    painter.fillPath(path, pulse)
+                elif t > 0.60:
+                    self._pulse_started_at = 0.0
         if self._is_expanded:
             gradient = QLinearGradient(self._shimmer_x - 70, 0, self._shimmer_x + 70, 0)
-            gradient.setColorAt(0.0, QColor(255, 255, 255, 0))
-            gradient.setColorAt(0.5, QColor(255, 255, 255, 50))
-            gradient.setColorAt(1.0, QColor(255, 255, 255, 0))
+            hue = int((float(self._accent_phase) * 360.0) % 360.0)
+            highlight = QColor.fromHsv(hue, 160, 255)
+            gradient.setColorAt(0.0, QColor(highlight.red(), highlight.green(), highlight.blue(), 0))
+            gradient.setColorAt(0.5, QColor(highlight.red(), highlight.green(), highlight.blue(), 64))
+            gradient.setColorAt(1.0, QColor(highlight.red(), highlight.green(), highlight.blue(), 0))
             painter.fillPath(path, gradient)
+        if not self._is_expanded:
+            painter.save()
+            badge_rect = self._timer_badge_rect()
+            if self._timer_enabled and self._timer_mode != "off" and self._timer_paused:
+                badge_bg = QColor(255, 255, 255, 70) if theme_manager.current_theme == "dark" else QColor(0, 0, 0, 40)
+            else:
+                badge_bg = QColor(255, 255, 255, 40) if theme_manager.current_theme == "dark" else QColor(0, 0, 0, 24)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(badge_bg)
+            painter.drawRoundedRect(badge_rect, 8, 8)
+            painter.setPen(QColor(255, 255, 255, 220) if theme_manager.current_theme == "dark" else QColor(32, 32, 32, 220))
+            font = painter.font()
+            font.setPointSize(9)
+            font.setBold(True)
+            painter.setFont(font)
+            text = self._format_timer_text()
+            painter.drawText(badge_rect, int(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignHCenter), text)
+            painter.restore()
+
+    def get_accent_phase(self) -> float:
+        return float(self._accent_phase)
+
+    def set_accent_phase(self, value: float) -> None:
+        self._accent_phase = float(value)
+        if self._is_expanded or (self._timer_enabled and self._timer_mode != "off") or self._state == "Recording":
+            self.update()
+
+    accent_phase = Property(float, get_accent_phase, set_accent_phase)
+
+    def _timer_badge_rect(self) -> QRect:
+        w = 46
+        h = 22
+        x = 8
+        y = int(round((self.height() - h) / 2.0))
+        return QRect(x, y, w, h)
+
+    def _format_timer_text(self) -> str:
+        if not self._timer_enabled or self._timer_mode == "off":
+            return "计时"
+        if self._timer_mode == "countup":
+            elapsed = self._elapsed_seconds_int()
+            return f"{elapsed // 60:02d}:{elapsed % 60:02d}"
+        if self._timer_mode == "countdown":
+            remain = self._remain_seconds_int()
+            return f"{remain // 60:02d}:{remain % 60:02d}"
+        return ""
+
+    def _elapsed_seconds_float(self) -> float:
+        if not self._timer_enabled or self._timer_mode == "off":
+            return 0.0
+        if self._timer_paused:
+            return float(self._timer_pause_acc)
+        return float(self._timer_pause_acc) + (time.monotonic() - float(self._timer_started_at))
+
+    def _elapsed_seconds_int(self) -> int:
+        return max(0, int(self._elapsed_seconds_float()))
+
+    def _remain_seconds_int(self) -> int:
+        if self._timer_mode != "countdown":
+            return 0
+        remain_f = float(self._timer_countdown_total) - self._elapsed_seconds_float()
+        if remain_f <= 0.0:
+            return 0
+        return int(remain_f + 0.999)
+
+    def _on_timer_tick(self) -> None:
+        if not self._timer_enabled or self._timer_mode == "off":
+            return
+        if self._timer_mode == "countdown":
+            if self._elapsed_seconds_float() >= float(self._timer_countdown_total):
+                self._timer_enabled = False
+                self._timer_mode = "off"
+                self.timer_tick.stop()
+                self._timer_last_text = ""
+                self.update()
+                return
+        text = self._format_timer_text()
+        if text != self._timer_last_text:
+            self._timer_last_text = text
+            self.update()
+
+    def _populate_timer_menu(self, menu: QMenu) -> None:
+        menu.clear()
+        start_up = menu.addAction("开始正计时")
+        start_pomodoro = menu.addAction("开始倒计时 25:00")
+        start_custom = menu.addAction("自定义倒计时…")
+        pause = menu.addAction("暂停" if (self._timer_enabled and not self._timer_paused) else "继续")
+        stop = menu.addAction("停止")
+        start_up.triggered.connect(self._start_count_up)
+        start_pomodoro.triggered.connect(lambda: self._start_count_down(25 * 60))
+        start_custom.triggered.connect(self._start_custom_countdown)
+        pause.triggered.connect(self._toggle_pause_timer)
+        stop.triggered.connect(self._stop_timer)
+
+    def _start_count_up(self) -> None:
+        self._timer_mode = "countup"
+        self._timer_enabled = True
+        self._timer_paused = False
+        self._timer_pause_acc = 0.0
+        self._timer_started_at = time.monotonic()
+        self._timer_last_text = ""
+        self._trigger_pulse()
+        self.timer_tick.start()
+        self.update()
+
+    def _start_count_down(self, seconds: int) -> None:
+        self._timer_mode = "countdown"
+        self._timer_countdown_total = float(max(1, int(seconds)))
+        self._timer_enabled = True
+        self._timer_paused = False
+        self._timer_pause_acc = 0.0
+        self._timer_started_at = time.monotonic()
+        self._timer_last_text = ""
+        self._trigger_pulse()
+        self.timer_tick.start()
+        self.update()
+
+    def _trigger_pulse(self) -> None:
+        self._pulse_started_at = time.monotonic()
+        self.update()
+
+    def _adjust_countdown_minutes(self, minutes_delta: int) -> None:
+        if minutes_delta == 0:
+            return
+        elapsed = self._elapsed_seconds_float()
+        remain = max(0.0, float(self._timer_countdown_total) - elapsed)
+        remain = remain + float(minutes_delta) * 60.0
+        remain = max(60.0, min(600.0 * 60.0, remain))
+        self._timer_mode = "countdown"
+        self._timer_countdown_total = float(elapsed) + float(remain)
+        self._timer_last_text = ""
+        self.update()
+
+    def _start_custom_countdown(self) -> None:
+        minutes, ok = QInputDialog.getInt(self, "倒计时", "输入分钟数", 25, 1, 600, 1)
+        if ok:
+            self._start_count_down(minutes * 60)
+
+    def _toggle_pause_timer(self) -> None:
+        if not self._timer_enabled or self._timer_mode == "off":
+            return
+        if self._timer_paused:
+            self._timer_started_at = time.monotonic()
+            self._timer_paused = False
+        else:
+            self._timer_pause_acc = self._elapsed_seconds_float()
+            self._timer_paused = True
+        self._timer_last_text = ""
+        self.update()
+
+    def _stop_timer(self) -> None:
+        self._timer_enabled = False
+        self._timer_mode = "off"
+        self._timer_paused = False
+        self._timer_pause_acc = 0.0
+        self.timer_tick.stop()
+        self.update()

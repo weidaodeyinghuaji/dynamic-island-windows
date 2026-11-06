@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ctypes
 import subprocess
+from pathlib import Path
 
 from PySide6.QtCore import Qt, QUrl, QTimer, QThread, Signal
 from PySide6.QtGui import QDesktopServices
@@ -15,60 +16,35 @@ class MediaInfoFetcher(QThread):
     def run(self):
         title, artist = "音乐", "等待播放..."
         try:
-            # 优先尝试使用预先写好的 PowerShell 脚本来获取信息
-            # 这不需要安装额外的 Python 库
-            ps_script = "d:\\demo\\灵动岛\\plugins\\get_media.ps1"
-            import os
-            if os.path.exists(ps_script):
-                result = subprocess.run(
-                    ["powershell", "-ExecutionPolicy", "Bypass", "-File", ps_script],
-                    capture_output=True,
-                    text=True,
-                    creationflags=subprocess.CREATE_NO_WINDOW,
-                    timeout=2
-                )
-                output = result.stdout.strip()
-                if output and "|" in output:
-                    parts = output.split("|")
-                    if len(parts) >= 2:
-                        title = parts[0].strip()
-                        artist = parts[1].strip()
-                        # 汽水音乐等可能没有 artist 字段，容错处理
-                        if not artist:
-                            artist = "未知歌手"
-                    if len(parts) >= 3:
-                        status = parts[2].strip()
-                        # 只要状态不是 Stopped，就认为可以显示
-                        if status == "Stopped" or (title == "" and artist == "未知歌手"):
-                            title = "音乐"
-                            artist = "等待播放..."
-            else:
-                # 备选方案: 直接执行单行 PowerShell 命令
-                cmd = "[Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager, Windows.Media, ContentType = WindowsRuntime] | Out-Null; Add-Type -AssemblyName System.Runtime.WindowsRuntime; try { $managerAsync = [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager]::RequestAsync(); $managerAsync.AsTask().Wait(); $manager = $managerAsync.GetResults(); $session = $manager.GetCurrentSession(); if ($session) { $propsAsync = $session.TryGetMediaPropertiesAsync(); $propsAsync.AsTask().Wait(); $props = $propsAsync.GetResults(); $status = $session.GetPlaybackInfo().PlaybackStatus.ToString(); $title = $props.Title; if (-not $title) { $title = '音乐' }; Write-Output ($title + '|' + $props.Artist + '|' + $status) } } catch {}"
-                result = subprocess.run(
-                    ["powershell", "-Command", cmd],
-                    capture_output=True,
-                    text=True,
-                    creationflags=subprocess.CREATE_NO_WINDOW,
-                    timeout=2
-                )
-                output = result.stdout.strip()
-                if output and "|" in output:
-                    parts = output.split("|")
-                    if len(parts) >= 2:
-                        title = parts[0].strip()
-                        artist = parts[1].strip()
-                        if not artist:
-                            artist = "未知歌手"
-                    if len(parts) >= 3:
-                        status = parts[2].strip()
-                        # 只要状态不是 Stopped，就认为可以显示（兼容某些播放器状态可能是 Paused）
-                        if status == "Stopped" or (title == "" and artist == "未知歌手"):
-                            title = "音乐"
-                            artist = "等待播放..."
-                        else:
-                            # 有些播放器可能无法正确获取播放状态，如果是 Error，只要有歌名也显示
-                            pass
+            cmd = "[Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager, Windows.Media, ContentType = WindowsRuntime] | Out-Null; Add-Type -AssemblyName System.Runtime.WindowsRuntime; try { $managerAsync = [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager]::RequestAsync(); $managerAsync.AsTask().Wait(); $manager = $managerAsync.GetResults(); $session = $manager.GetCurrentSession(); if ($session) { $propsAsync = $session.TryGetMediaPropertiesAsync(); $propsAsync.AsTask().Wait(); $props = $propsAsync.GetResults(); $status = $session.GetPlaybackInfo().PlaybackStatus.ToString(); $title = $props.Title; if (-not $title) { $title = '音乐' }; Write-Output ($title + '|' + $props.Artist + '|' + $status) } } catch {}"
+            result = subprocess.run(
+                ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", cmd],
+                capture_output=True,
+                text=True,
+                creationflags=subprocess.CREATE_NO_WINDOW,
+                timeout=3
+            )
+            output = (result.stdout or "").strip()
+            if not output or "|" not in output:
+                ps_script = Path(__file__).resolve().with_name("get_media.ps1")
+                if ps_script.is_file():
+                    result = subprocess.run(
+                        ["powershell.exe", "-ExecutionPolicy", "Bypass", "-File", str(ps_script)],
+                        capture_output=True,
+                        text=True,
+                        creationflags=subprocess.CREATE_NO_WINDOW,
+                        timeout=3
+                    )
+                    output = (result.stdout or "").strip()
+            if output and "|" in output:
+                parts = output.split("|")
+                if len(parts) >= 2:
+                    title = (parts[0] or "").strip() or "音乐"
+                    artist = (parts[1] or "").strip() or "未知歌手"
+                if len(parts) >= 3:
+                    status = (parts[2] or "").strip()
+                    if status == "Stopped" and (not title or title == "音乐"):
+                        title, artist = "音乐", "等待播放..."
         except Exception:
             pass
             

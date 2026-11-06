@@ -4,6 +4,7 @@ import ctypes
 import os
 import subprocess
 
+from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QHBoxLayout, QPushButton
 
 from src.plugins.base import IslandPlugin
@@ -47,22 +48,53 @@ class ProductivityToolsPlugin(IslandPlugin):
         user32 = getattr(ctypes, "windll", None)
         if user32 is None:
             return
-        for code in codes:
-            user32.user32.keybd_event(code, 0, 0, 0)
-        for code in reversed(codes):
-            user32.user32.keybd_event(code, 0, 2, 0)
+        SendInput = user32.user32.SendInput
+        KEYEVENTF_EXTENDEDKEY = 0x0001
+        KEYEVENTF_KEYUP = 0x0002
+        class KEYBDINPUT(ctypes.Structure):
+            _fields_ = [("wVk", ctypes.c_ushort),
+                        ("wScan", ctypes.c_ushort),
+                        ("dwFlags", ctypes.c_ulong),
+                        ("time", ctypes.c_ulong),
+                        ("dwExtraInfo", ctypes.c_void_p)]
+        class INPUT_UNION(ctypes.Union):
+            _fields_ = [("ki", KEYBDINPUT)]
+        class INPUT(ctypes.Structure):
+            _fields_ = [("type", ctypes.c_ulong),
+                        ("u", INPUT_UNION)]
+        inputs = []
+        # key down
+        for vk in codes:
+            flags = KEYEVENTF_EXTENDEDKEY if vk in (0x5B, 0x5C, 0x11, 0x12, 0x10) else 0
+            ki = KEYBDINPUT(wVk=vk, wScan=0, dwFlags=flags, time=0, dwExtraInfo=None)
+            inp = INPUT(type=1, u=INPUT_UNION(ki=ki))
+            inputs.append(inp)
+        # key up (reverse)
+        for vk in reversed(codes):
+            flags = KEYEVENTF_KEYUP | (KEYEVENTF_EXTENDEDKEY if vk in (0x5B, 0x5C, 0x11, 0x12, 0x10) else 0)
+            ki = KEYBDINPUT(wVk=vk, wScan=0, dwFlags=flags, time=0, dwExtraInfo=None)
+            inp = INPUT(type=1, u=INPUT_UNION(ki=ki))
+            inputs.append(inp)
+        arr = (INPUT * len(inputs))(*inputs)
+        SendInput(len(arr), arr, ctypes.sizeof(INPUT))
 
     def _capture_area(self) -> None:
         self._send_hotkey(0x5B, 0x10, 0x53)
 
     def _toggle_recording(self) -> None:
-        self._recording = not self._recording
-        self._send_hotkey(0x5B, 0x12, 0x52)
-        self.record_btn.setText("🔴" if self._recording else "⏺")
-        self.record_btn.setToolTip(f"录制中...\n系统录屏保存目录：{self._capture_dir}" if self._recording else f"录屏\n系统录屏保存目录：{self._capture_dir}")
-        parent = self.parentWidget()
-        if parent and hasattr(parent, "set_recording_mode"):
-            parent.set_recording_mode(self._recording)
+        try:
+            subprocess.Popen(["explorer.exe", "ms-gamebar:"], shell=False)
+        except Exception:
+            pass
+        def fire_hotkey():
+            self._recording = not self._recording
+            self._send_hotkey(0x5B, 0x12, 0x52)
+            self.record_btn.setText("🔴" if self._recording else "⏺")
+            self.record_btn.setToolTip(f"录制中...\n系统录屏保存目录：{self._capture_dir}" if self._recording else f"录屏\n系统录屏保存目录：{self._capture_dir}")
+            parent = self.parentWidget()
+            if parent and hasattr(parent, "set_recording_mode"):
+                parent.set_recording_mode(self._recording)
+        QTimer.singleShot(250, fire_hotkey)
 
     def _open_capture_folder(self) -> None:
         os.makedirs(self._capture_dir, exist_ok=True)

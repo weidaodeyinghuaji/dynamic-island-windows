@@ -72,18 +72,19 @@ class ShortcutDots(QWidget):
         self._layout = QHBoxLayout(self)
         self._layout.setContentsMargins(0, 0, 0, 0)
         self._layout.setSpacing(8)
+        self._compact_mode = False
         
         self.dots_container = QWidget(self)
-        dots_layout = QHBoxLayout(self.dots_container)
-        dots_layout.setContentsMargins(0, 0, 0, 0)
-        dots_layout.setSpacing(8)
+        self._dots_layout = QHBoxLayout(self.dots_container)
+        self._dots_layout.setContentsMargins(0, 0, 0, 0)
+        self._dots_layout.setSpacing(8)
         
         for index, color in enumerate(("#ff5f57", "#febc2e", "#28c840")):
             button = DotButton(index, color, self.dots_container)
             button.clicked.connect(lambda _, i=index: self.execute_shortcut(i))
             button.long_pressed.connect(self.edit_requested.emit)
             button.shortcut_dropped.connect(self._apply_dropped_shortcut)
-            dots_layout.addWidget(button)
+            self._dots_layout.addWidget(button)
             self._buttons.append(button)
             
         self.red_dot = self._buttons[0]
@@ -105,7 +106,10 @@ class ShortcutDots(QWidget):
         self._music_title = title
         self._music_artist = artist
         
-        if is_playing and title and title != "音乐":
+        parent = self.parent()
+        if parent is not None and hasattr(parent, "_is_expanded") and not bool(getattr(parent, "_is_expanded")):
+            is_playing = False
+        if is_playing and title and title != "音乐" and not self._compact_mode:
             self.dots_container.hide()
             self.music_label.setText(f"🎵 {title}")
             self.music_label.show()
@@ -113,14 +117,29 @@ class ShortcutDots(QWidget):
         else:
             self.music_label.hide()
             self.dots_container.show()
-            self.setFixedSize(64, 18)
+            self.setFixedSize(54 if self._compact_mode else 64, 18)
             
         # 通知父窗口重新计算位置
-        if self.parent():
-            if hasattr(self.parent(), '_position_shortcut_dots'):
-                self.parent()._position_shortcut_dots()
-            if hasattr(self.parent(), 'update'):
-                self.parent().update()
+        if parent:
+            if hasattr(parent, "_position_shortcut_dots"):
+                parent._position_shortcut_dots()
+            if hasattr(parent, "update"):
+                parent.update()
+
+    def set_compact_mode(self, compact: bool) -> None:
+        compact = bool(compact)
+        if self._compact_mode == compact:
+            return
+        self._compact_mode = compact
+        self.music_label.hide()
+        self.dots_container.show()
+        self._layout.setSpacing(4 if compact else 8)
+        self._dots_layout.setSpacing(4 if compact else 8)
+        size = 14 if compact else 16
+        for btn in self._buttons:
+            btn.setFixedSize(size, size)
+            btn.setStyleSheet(btn.styleSheet().replace("border-radius:8px;", f"border-radius:{int(size/2)}px;"))
+        self.setFixedSize(54 if compact else 64, 18)
 
     def execute_shortcut(self, index: int) -> None:
         presets = config_manager.get("shortcut_presets", [{}, {}, {}])

@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.1] - 2026-11-06
+
+### Fixed
+- 修复媒体信息备用脚本使用固定开发路径的问题，改为从插件所在目录查找脚本。
+
+### Changed
+- 2026-07-27：基于当时的功能代码整理 V1.0.1 版本，更新软件版本标识与交付材料。
+
 ## [1.0.0] - 2026-03-23
 
 ### Added

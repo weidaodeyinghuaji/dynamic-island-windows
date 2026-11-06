@@ -5,6 +5,7 @@
 build/
 dist/
 *.spec
+!DynamicIsland.spec
 .pytest_cache/
 __pycache__/
 *.pyc

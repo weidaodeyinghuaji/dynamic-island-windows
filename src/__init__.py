@@ -1,1 +1,2 @@
-
+SOFTWARE_NAME = "桌面灵动交互与状态聚合软件"
+SOFTWARE_VERSION = "1.0.1"
