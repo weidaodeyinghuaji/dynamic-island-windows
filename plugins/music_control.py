@@ -17,14 +17,17 @@ class MediaInfoFetcher(QThread):
         title, artist = "音乐", "等待播放..."
         try:
             cmd = "[Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager, Windows.Media, ContentType = WindowsRuntime] | Out-Null; Add-Type -AssemblyName System.Runtime.WindowsRuntime; try { $managerAsync = [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager]::RequestAsync(); $managerAsync.AsTask().Wait(); $manager = $managerAsync.GetResults(); $session = $manager.GetCurrentSession(); if ($session) { $propsAsync = $session.TryGetMediaPropertiesAsync(); $propsAsync.AsTask().Wait(); $props = $propsAsync.GetResults(); $status = $session.GetPlaybackInfo().PlaybackStatus.ToString(); $title = $props.Title; if (-not $title) { $title = '音乐' }; Write-Output ($title + '|' + $props.Artist + '|' + $status) } } catch {}"
-            result = subprocess.run(
-                ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", cmd],
-                capture_output=True,
-                text=True,
-                creationflags=subprocess.CREATE_NO_WINDOW,
-                timeout=3
-            )
-            output = (result.stdout or "").strip()
+            try:
+                result = subprocess.run(
+                    ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", cmd],
+                    capture_output=True,
+                    text=True,
+                    creationflags=subprocess.CREATE_NO_WINDOW,
+                    timeout=3
+                )
+                output = (result.stdout or "").strip()
+            except (OSError, subprocess.SubprocessError):
+                output = ""
             if not output or "|" not in output:
                 ps_script = Path(__file__).resolve().with_name("get_media.ps1")
                 if ps_script.is_file():
@@ -36,6 +39,8 @@ class MediaInfoFetcher(QThread):
                         timeout=3
                     )
                     output = (result.stdout or "").strip()
+                    if output.startswith("Error|"):
+                        output = ""
             if output and "|" in output:
                 parts = output.split("|")
                 if len(parts) >= 2:
