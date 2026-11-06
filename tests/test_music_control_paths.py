@@ -1,3 +1,6 @@
+import os
+from pathlib import Path
+import shutil
 import subprocess
 from types import SimpleNamespace
 
@@ -121,3 +124,50 @@ def test_media_fallback_error_keeps_waiting(monkeypatch, tmp_path, qapp):
 
     assert len(calls) == 2
     assert result == [("音乐", "等待播放...")]
+
+
+def test_media_primary_reported_error_uses_fallback(monkeypatch, tmp_path, qapp):
+    plugin_dir = tmp_path / "plugins"
+    plugin_dir.mkdir()
+    (plugin_dir / "get_media.ps1").touch()
+    monkeypatch.setattr(music_control, "__file__", str(plugin_dir / "music_control.py"))
+    calls = []
+
+    def fake_run(arguments, **kwargs):
+        calls.append(arguments)
+        return SimpleNamespace(stdout="Error|unavailable|Stopped" if len(calls) == 1 else "Song|Artist|Playing")
+
+    monkeypatch.setattr(music_control.subprocess, "run", fake_run)
+    result = []
+    fetcher = music_control.MediaInfoFetcher()
+    fetcher.info_ready.connect(lambda title, artist: result.append((title, artist)))
+
+    fetcher.run()
+
+    assert len(calls) == 2
+    assert result == [("Song", "Artist")]
+
+
+_RUN_WINDOWS_MEDIA_TESTS = os.environ.get("RUN_WINDOWS_MEDIA_TESTS") == "1" and bool(shutil.which("powershell.exe"))
+
+
+@pytest.mark.skipif(not _RUN_WINDOWS_MEDIA_TESTS, reason="需要明确启用 Windows 媒体会话集成测试")
+def test_windows_primary_query_can_read_media_manager():
+    result = subprocess.run(
+        ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", music_control.MEDIA_QUERY_COMMAND],
+        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10, check=True,
+    )
+    output = result.stdout.strip()
+    assert not output.startswith("Error|"), output
+    assert len(output.split("|")) >= 3, output
+
+
+@pytest.mark.skipif(not _RUN_WINDOWS_MEDIA_TESTS, reason="需要明确启用 Windows 媒体会话集成测试")
+def test_windows_fallback_reports_initialization_failure():
+    script = Path(music_control.__file__).resolve().with_name("get_media.ps1")
+    command = f"function Add-Type {{ throw 'InjectedFailure' }}; & '{script}'"
+    result = subprocess.run(
+        ["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", command],
+        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10, check=True,
+    )
+    assert result.stdout.strip().startswith("Error|"), result.stdout

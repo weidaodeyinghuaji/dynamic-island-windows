@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file.
 ### Fixed
 - 修复媒体信息备用脚本使用固定开发路径的问题，改为从插件所在目录查找脚本。
 - 主读取方式超时或启动失败时尝试备用读取；备用脚本返回错误时保持等待状态。
+- 修复 Windows PowerShell 中媒体会话异步结果的读取方式及备用脚本初始化错误，并统一使用 UTF-8 传递歌曲信息。
 
 ### Changed
 - 2026-07-27：基于当时的功能代码整理 V1.0.1 版本，更新软件版本标识与交付材料。

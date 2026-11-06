@@ -10,31 +10,66 @@ from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QVBoxLayout
 
 from src.plugins.base import IslandPlugin
 
+
+MEDIA_QUERY_COMMAND = r"""
+[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false
+$ErrorActionPreference = 'Stop'
+try {
+    [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager, Windows.Media, ContentType = WindowsRuntime] | Out-Null
+    [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionMediaProperties, Windows.Media, ContentType = WindowsRuntime] | Out-Null
+    Add-Type -AssemblyName System.Runtime.WindowsRuntime
+    $asTaskMethod = [System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object {
+        $_.Name -eq 'AsTask' -and $_.IsGenericMethodDefinition -and
+        $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1'
+    } | Select-Object -First 1
+    if ($null -eq $asTaskMethod) { throw 'WinRT AsTask unavailable' }
+    function Wait-WinRt($operation, [type]$resultType) {
+        $task = $asTaskMethod.MakeGenericMethod($resultType).Invoke($null, @($operation))
+        $task.GetAwaiter().GetResult()
+    }
+    $manager = Wait-WinRt ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager]::RequestAsync()) ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager])
+    $session = $manager.GetCurrentSession()
+    if ($null -eq $session) {
+        Write-Output '||Stopped'
+    } else {
+        $properties = Wait-WinRt ($session.TryGetMediaPropertiesAsync()) ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionMediaProperties])
+        $status = $session.GetPlaybackInfo().PlaybackStatus.ToString()
+        Write-Output ($properties.Title + '|' + $properties.Artist + '|' + $status)
+    }
+} catch {
+    Write-Output ('Error|' + $_.Exception.Message.Replace('|', '/') + '|Stopped')
+}
+"""
+
+
 class MediaInfoFetcher(QThread):
     info_ready = Signal(str, str)
     
     def run(self):
         title, artist = "音乐", "等待播放..."
         try:
-            cmd = "[Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager, Windows.Media, ContentType = WindowsRuntime] | Out-Null; Add-Type -AssemblyName System.Runtime.WindowsRuntime; try { $managerAsync = [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager]::RequestAsync(); $managerAsync.AsTask().Wait(); $manager = $managerAsync.GetResults(); $session = $manager.GetCurrentSession(); if ($session) { $propsAsync = $session.TryGetMediaPropertiesAsync(); $propsAsync.AsTask().Wait(); $props = $propsAsync.GetResults(); $status = $session.GetPlaybackInfo().PlaybackStatus.ToString(); $title = $props.Title; if (-not $title) { $title = '音乐' }; Write-Output ($title + '|' + $props.Artist + '|' + $status) } } catch {}"
             try:
                 result = subprocess.run(
-                    ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", cmd],
+                    ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", MEDIA_QUERY_COMMAND],
                     capture_output=True,
                     text=True,
+                    encoding="utf-8",
+                    errors="replace",
                     creationflags=subprocess.CREATE_NO_WINDOW,
                     timeout=3
                 )
                 output = (result.stdout or "").strip()
             except (OSError, subprocess.SubprocessError):
                 output = ""
-            if not output or "|" not in output:
+            if not output or "|" not in output or output.startswith("Error|"):
                 ps_script = Path(__file__).resolve().with_name("get_media.ps1")
                 if ps_script.is_file():
                     result = subprocess.run(
                         ["powershell.exe", "-ExecutionPolicy", "Bypass", "-File", str(ps_script)],
                         capture_output=True,
                         text=True,
+                        encoding="utf-8",
+                        errors="replace",
                         creationflags=subprocess.CREATE_NO_WINDOW,
                         timeout=3
                     )
